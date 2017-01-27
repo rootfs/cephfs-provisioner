@@ -1,5 +1,5 @@
-hash: 6fa2c84f1bd00d07bf4095b53a4d1c72f0d4afac54ea02fa7373a33bd5dcff8e
-updated: 2017-01-19T15:37:04.161550129-05:00
+hash: 18cea7cc2a7d7d513ed4d10fa5a98d32535c0214aead46aa19cd844ca9be4721
+updated: 2017-01-27T21:39:38.053249039Z
 imports:
 - name: cloud.google.com/go
   version: 3b1ae45394a234c385be014e9a488f2bb6eef821
@@ -251,6 +251,7 @@ imports:
 - name: k8s.io/kubernetes
   version: ee03b9b206ece1500b65140f26acc2ebe40b630b
   subpackages:
+  - pkg/util/exec
   - pkg/util/goroutinemap
   - pkg/util/goroutinemap/exponentialbackoff
   - pkg/util/runtime
