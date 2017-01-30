@@ -14,3 +14,4 @@ import:
   - pkg/util/uuid
   - pkg/util/wait
   - rest
+  - tools/clientcmd

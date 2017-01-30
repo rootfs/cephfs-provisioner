@@ -1,5 +1,5 @@
-hash: 18cea7cc2a7d7d513ed4d10fa5a98d32535c0214aead46aa19cd844ca9be4721
-updated: 2017-01-27T21:39:38.053249039Z
+hash: 2103e3b0448e58e99798a85f7cb623b19eca1971d42a9f0ab28e7c28053988b4
+updated: 2017-01-30T18:45:59.131601169Z
 imports:
 - name: cloud.google.com/go
   version: 3b1ae45394a234c385be014e9a488f2bb6eef821
@@ -63,6 +63,10 @@ imports:
   - proto
 - name: github.com/google/gofuzz
   version: bbcb9da2d746f8bdbd6a936686a0a6067ada0ec5
+- name: github.com/howeyc/gopass
+  version: bf9dde6d0d2c004a008c27aaee91170c786f6db8
+- name: github.com/imdario/mergo
+  version: 50d4dbd4eb0e84778abe37cefef140271d96fade
 - name: github.com/jonboulle/clockwork
   version: 72f9bd7c4e0c2a40055ab3d0f09654f730cce982
 - name: github.com/kubernetes-incubator/nfs-provisioner
@@ -89,6 +93,10 @@ imports:
   version: f1f1a805ed361a0e078bb537e4ea78cd37dcf065
   subpackages:
   - codec
+- name: golang.org/x/crypto
+  version: dc137beb6cce2043eb6b5f223ab8bf51c32459f4
+  subpackages:
+  - ssh/terminal
 - name: golang.org/x/net
   version: e90d6d0afc4c315a0d87a568ae68577cc15149a0
   subpackages:
@@ -105,6 +113,10 @@ imports:
   - internal
   - jws
   - jwt
+- name: golang.org/x/sys
+  version: d75a52659825e75fff6158388dddc6a5b04f9ba5
+  subpackages:
+  - unix
 - name: golang.org/x/text
   version: 2910a502d2bf9e43193af9d68ca516529614eed3
   subpackages:
@@ -219,6 +231,7 @@ imports:
   - pkg/util/errors
   - pkg/util/flowcontrol
   - pkg/util/framer
+  - pkg/util/homedir
   - pkg/util/integer
   - pkg/util/intstr
   - pkg/util/json
@@ -243,15 +256,18 @@ imports:
   - plugin/pkg/client/auth/gcp
   - plugin/pkg/client/auth/oidc
   - rest
+  - tools/auth
   - tools/cache
+  - tools/clientcmd
   - tools/clientcmd/api
+  - tools/clientcmd/api/latest
+  - tools/clientcmd/api/v1
   - tools/metrics
   - tools/record
   - transport
 - name: k8s.io/kubernetes
   version: ee03b9b206ece1500b65140f26acc2ebe40b630b
   subpackages:
-  - pkg/util/exec
   - pkg/util/goroutinemap
   - pkg/util/goroutinemap/exponentialbackoff
   - pkg/util/runtime

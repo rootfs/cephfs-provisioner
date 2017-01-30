@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -16,7 +17,7 @@ import (
 	"k8s.io/client-go/pkg/util/uuid"
 	"k8s.io/client-go/pkg/util/wait"
 	"k8s.io/client-go/rest"
-	"k8s.io/kubernetes/pkg/util/exec"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 const (
@@ -56,15 +57,18 @@ func (p *cephFSProvisioner) Provision(options controller.VolumeOptions) (*v1.Per
 		return nil, fmt.Errorf("claim Selector is not supported")
 	}
 	var (
-		err                                                         error
-		mon                                                         []string
-		adminId, adminSecretName, adminSecretNamespace, adminSecret string
+		err                                                                  error
+		mon                                                                  []string
+		cluster, adminId, adminSecretName, adminSecretNamespace, adminSecret string
 	)
 	adminSecretNamespace = "default"
 	adminId = "admin"
+	cluster = "ceph"
 
 	for k, v := range options.Parameters {
 		switch strings.ToLower(k) {
+		case "cluster":
+			cluster = v
 		case "monitors":
 			arr := strings.Split(v, ",")
 			for _, m := range arr {
@@ -95,11 +99,18 @@ func (p *cephFSProvisioner) Provision(options controller.VolumeOptions) (*v1.Per
 	// create random user id
 	user := fmt.Sprintf("kubernetes-dynamic-user-%s", uuid.NewUUID())
 	// provision share
-	exe := exec.New()
-	cmd := exe.Command(provisionCmd, "-a", adminId, "-p", adminSecret, "-n", user, "-u", share)
+	// create cmd
+	cmd := exec.Command(provisionCmd, "-n", share, "-u", user)
+	// set env
+	cmd.Env = []string{
+		"CEPH_CLUSTER_NAME=" + cluster,
+		"CEPH_MON=" + strings.Join(mon[:], ","),
+		"CEPH_AUTH_ID=" + adminId,
+		"CEPH_AUTH_KEY=" + adminSecret}
+
 	output, cmdErr := cmd.CombinedOutput()
 	if cmdErr != nil {
-		glog.Errorf("failed to provision share %q for %q, err: %v", share, user, cmdErr)
+		glog.Errorf("failed to provision share %q for %q, err: %v, output: %v", share, user, cmdErr, string(output))
 		return nil, cmdErr
 	}
 	// validate output
@@ -131,7 +142,6 @@ func (p *cephFSProvisioner) Provision(options controller.VolumeOptions) (*v1.Per
 		glog.Errorf("Cephfs Provisioner: create volume failed, err: %v", err)
 		return nil, err
 	}
-	glog.Infof("successfully created CephFS share %q")
 
 	pv := &v1.PersistentVolume{
 		ObjectMeta: v1.ObjectMeta{
@@ -152,7 +162,8 @@ func (p *cephFSProvisioner) Provision(options controller.VolumeOptions) (*v1.Per
 			},
 			PersistentVolumeSource: v1.PersistentVolumeSource{
 				CephFS: &v1.CephFSVolumeSource{
-					Path: res.Path,
+					Monitors: mon,
+					Path:     res.Path[strings.Index(res.Path, "/"):],
 					SecretRef: &v1.LocalObjectReference{
 						Name: secretName,
 					},
@@ -161,6 +172,8 @@ func (p *cephFSProvisioner) Provision(options controller.VolumeOptions) (*v1.Per
 			},
 		},
 	}
+
+	glog.Infof("successfully created CephFS share %+v", pv.Spec.PersistentVolumeSource.CephFS)
 
 	return pv, nil
 }
@@ -195,13 +208,23 @@ func (p *cephFSProvisioner) parsePVSecret(namespace, secretName string) (string,
 	return "", fmt.Errorf("no secret found")
 }
 
+var (
+	master     = flag.String("master", "", "Master URL")
+	kubeconfig = flag.String("kubeconfig", "", "Absolute path to the kubeconfig")
+)
+
 func main() {
 	flag.Parse()
 	flag.Set("logtostderr", "true")
 
-	// Create an InClusterConfig and use it to create a client for the controller
-	// to use to communicate with Kubernetes
-	config, err := rest.InClusterConfig()
+	var config *rest.Config
+	var err error
+	if *master != "" || *kubeconfig != "" {
+		config, err = clientcmd.BuildConfigFromFlags(*master, *kubeconfig)
+	} else {
+		config, err = rest.InClusterConfig()
+	}
+
 	if err != nil {
 		glog.Fatalf("Failed to create config: %v", err)
 	}
