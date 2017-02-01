@@ -13,6 +13,7 @@ import (
 	"github.com/kubernetes-incubator/nfs-provisioner/controller"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/pkg/api/v1"
+	storage "k8s.io/client-go/pkg/apis/storage/v1beta1"
 	"k8s.io/client-go/pkg/types"
 	"k8s.io/client-go/pkg/util/uuid"
 	"k8s.io/client-go/pkg/util/wait"
@@ -26,6 +27,8 @@ const (
 	exponentialBackOffOnError = false
 	failedRetryThreshold      = 5
 	provisionCmd              = "/usr/local/bin/cephfs_provisioner"
+	provisionerIdAnn          = "cephFSProvisionerIdentity"
+	cephShareAnn              = "cephShare"
 )
 
 type provisionOutput struct {
@@ -56,43 +59,9 @@ func (p *cephFSProvisioner) Provision(options controller.VolumeOptions) (*v1.Per
 	if options.PVC.Spec.Selector != nil {
 		return nil, fmt.Errorf("claim Selector is not supported")
 	}
-	var (
-		err                                                                  error
-		mon                                                                  []string
-		cluster, adminId, adminSecretName, adminSecretNamespace, adminSecret string
-	)
-	adminSecretNamespace = "default"
-	adminId = "admin"
-	cluster = "ceph"
-
-	for k, v := range options.Parameters {
-		switch strings.ToLower(k) {
-		case "cluster":
-			cluster = v
-		case "monitors":
-			arr := strings.Split(v, ",")
-			for _, m := range arr {
-				mon = append(mon, m)
-			}
-		case "adminid":
-			adminId = v
-		case "adminsecretname":
-			adminSecretName = v
-		case "adminsecretnamespace":
-			adminSecretNamespace = v
-		default:
-			return nil, fmt.Errorf("invalid option %q", k)
-		}
-	}
-	// sanity check
-	if adminSecretName == "" {
-		return nil, fmt.Errorf("missing Ceph admin secret name")
-	}
-	if adminSecret, err = p.parsePVSecret(adminSecretNamespace, adminSecretName); err != nil {
-		return nil, fmt.Errorf("failed to get admin secret from [%q/%q]: %v", adminSecretNamespace, adminSecretName, err)
-	}
-	if len(mon) < 1 {
-		return nil, fmt.Errorf("missing Ceph monitors")
+	cluster, adminId, adminSecret, mon, err := p.parseParameters(options.Parameters)
+	if err != nil {
+		return nil, err
 	}
 	// create random share name
 	share := fmt.Sprintf("kubernetes-dynamic-pvc-%s", uuid.NewUUID())
@@ -147,7 +116,8 @@ func (p *cephFSProvisioner) Provision(options controller.VolumeOptions) (*v1.Per
 		ObjectMeta: v1.ObjectMeta{
 			Name: options.PVName,
 			Annotations: map[string]string{
-				"cephFSProvisionerIdentity": string(p.identity),
+				provisionerIdAnn: string(p.identity),
+				cephShareAnn:     share,
 			},
 		},
 		Spec: v1.PersistentVolumeSpec{
@@ -181,15 +151,86 @@ func (p *cephFSProvisioner) Provision(options controller.VolumeOptions) (*v1.Per
 // Delete removes the storage asset that was created by Provision represented
 // by the given PV.
 func (p *cephFSProvisioner) Delete(volume *v1.PersistentVolume) error {
-	ann, ok := volume.Annotations["CephFSProvisionerIdentity"]
+	ann, ok := volume.Annotations[provisionerIdAnn]
 	if !ok {
 		return errors.New("identity annotation not found on PV")
 	}
 	if ann != string(p.identity) {
 		return &controller.IgnoredError{"identity annotation on PV does not match ours"}
 	}
+	share, ok := volume.Annotations[cephShareAnn]
+	if !ok {
+		return errors.New("ceph share annotation not found on PV")
+	}
 	// delete CephFS
+	class, err := p.getClassForVolume(volume)
+	if err != nil {
+		return err
+	}
+	cluster, adminId, adminSecret, mon, err := p.parseParameters(class.Parameters)
+	if err != nil {
+		return err
+	}
+	user := volume.Spec.PersistentVolumeSource.CephFS.User
+	// create cmd
+	cmd := exec.Command(provisionCmd, "-r", "-n", share, "-u", user)
+	// set env
+	cmd.Env = []string{
+		"CEPH_CLUSTER_NAME=" + cluster,
+		"CEPH_MON=" + strings.Join(mon[:], ","),
+		"CEPH_AUTH_ID=" + adminId,
+		"CEPH_AUTH_KEY=" + adminSecret}
+
+	output, cmdErr := cmd.CombinedOutput()
+	if cmdErr != nil {
+		glog.Errorf("failed to delete share %q for %q, err: %v, output: %v", share, user, cmdErr, string(output))
+		return cmdErr
+	}
+
 	return nil
+}
+
+func (p *cephFSProvisioner) parseParameters(parameters map[string]string) (string, string, string, []string, error) {
+	var (
+		err                                                                  error
+		mon                                                                  []string
+		cluster, adminId, adminSecretName, adminSecretNamespace, adminSecret string
+	)
+
+	adminSecretNamespace = "default"
+	adminId = "admin"
+	cluster = "ceph"
+
+	for k, v := range parameters {
+		switch strings.ToLower(k) {
+		case "cluster":
+			cluster = v
+		case "monitors":
+			arr := strings.Split(v, ",")
+			for _, m := range arr {
+				mon = append(mon, m)
+			}
+		case "adminid":
+			adminId = v
+		case "adminsecretname":
+			adminSecretName = v
+		case "adminsecretnamespace":
+			adminSecretNamespace = v
+		default:
+			return "", "", "", nil, fmt.Errorf("invalid option %q", k)
+		}
+	}
+	// sanity check
+	if adminSecretName == "" {
+		return "", "", "", nil, fmt.Errorf("missing Ceph admin secret name")
+	}
+	if adminSecret, err = p.parsePVSecret(adminSecretNamespace, adminSecretName); err != nil {
+		return "", "", "", nil, fmt.Errorf("failed to get admin secret from [%q/%q]: %v", adminSecretNamespace, adminSecretName, err)
+	}
+	if len(mon) < 1 {
+		return "", "", "", nil, fmt.Errorf("missing Ceph monitors")
+	}
+	return cluster, adminId, adminSecret, mon, nil
 }
 
 func (p *cephFSProvisioner) parsePVSecret(namespace, secretName string) (string, error) {
@@ -206,6 +247,19 @@ func (p *cephFSProvisioner) parsePVSecret(namespace, secretName string) (string,
 
 	// If not found, the last secret in the map wins as done before
 	return "", fmt.Errorf("no secret found")
+}
+
+func (p *cephFSProvisioner) getClassForVolume(pv *v1.PersistentVolume) (*storage.StorageClass, error) {
+	className, found := pv.Annotations["volume.beta.kubernetes.io/storage-class"]
+	if !found {
+		return nil, fmt.Errorf("Volume has no class annotation")
+	}
+
+	class, err := p.client.Storage().StorageClasses().Get(className)
+	if err != nil {
+		return nil, err
+	}
+	return class, nil
 }
 
 var (
