@@ -1,3 +1,0 @@
-[submodule "cephfs_provisioner"]
-	path = cephfs_provisioner
-	url = https://github.com/rootfs/cephfs_provisioner
