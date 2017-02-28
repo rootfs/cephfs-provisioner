@@ -69,12 +69,10 @@ imports:
   version: 50d4dbd4eb0e84778abe37cefef140271d96fade
 - name: github.com/jonboulle/clockwork
   version: 72f9bd7c4e0c2a40055ab3d0f09654f730cce982
-- name: github.com/kubernetes-incubator/nfs-provisioner
-  version: 66e53b5a830820c304152761a3a019c2ffaefb22
+- name: github.com/kubernetes-incubator/external-storage
+  version: 4beb22131befecc87a93d70852df69ec7ad5180e
   subpackages:
-  - controller
-  - controller/leaderelection
-  - controller/leaderelection/resourcelock
+  - lib/controller
 - name: github.com/mailru/easyjson
   version: d5b7844b561a7bc640052f1b935f7b800330d7e0
   subpackages:
