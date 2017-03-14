@@ -16,20 +16,21 @@ docker build -t cephfs-provisioner .
 * Create a Ceph admin secret
 
 ```bash
-ceph auth get client.admin 2>&1 |grep "key = " |a^C '{print  $3'} |xargs echo -n > /tmp/secret
+ceph auth get client.admin 2>&1 |grep "key = " |awk '{print  $3'} |xargs echo -n > /tmp/secret
 kubectl create secret generic ceph-secret-admin --from-file=/tmp/secret --namespace=kube-system
 ```
 
 * Start CephFS provisioner
 
-Assume kubeconfig is at `/root/.kube`:
+Assume kubeconfig is at `/root/.kube` and Kubernetes certificate is at `/var/run/kubernetes`:
 
 ```bash
-docker run -ti -v /root/.kube:/kube --privileged --net=host  cephfs-provisioner /usr/local/bin/cephfs-provisioner -master=http://127.0.0.1:8080 -kubeconfig=/kube/config
+docker run -ti -v /root/.kube:/kube -v /var/run/kubernetes:/var/run/kubernetes --privileged --net=host  cephfs-provisioner /usr/local/bin/cephfs-provisioner -master=http://127.0.0.1:8080 -kubeconfig=/kube/config
 ```
 
 * Create a CephFS Storage Class
 
+Find the Ceph monitor's IP address and replace that in [class.yaml](class.yaml)
 ```bash
 kubectl create -f class.yaml
 ```
