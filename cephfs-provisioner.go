@@ -23,7 +23,7 @@ import (
 
 const (
 	resyncPeriod              = 15 * time.Second
-	provisionerName           = "kubernetes.io/cephfs"
+	provisionerName           = "ceph.com/cephfs"
 	exponentialBackOffOnError = false
 	failedRetryThreshold      = 5
 	provisionCmd              = "/usr/local/bin/cephfs_provisioner"
